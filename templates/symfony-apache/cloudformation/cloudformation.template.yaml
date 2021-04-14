@@ -75,6 +75,21 @@ Resources:
                   Value: !If [IsProduction, 'prod', 'dev']
               -   Name: APP_DEBUG
                   Value: !If [IsProduction, 0, 1]
+              -   Name: VIRTUALHOST_CONFIG_FILE
+                  Value: !Join
+                    - ''
+                    - - '/etc/apache2/sites-available/'
+                      - !Ref DomainWithDashesParameter
+                      - '.conf'
+              -   Name: VIRTUALHOST_DIRECTORY_PATH
+                  Value: !Join
+                    - ''
+                    - - '/var/www/'
+                      - !Ref DomainWithDashesParameter
+              -   Name: SYMFONY_CLEAR_CACHE_ON_STARTUP
+                  Value: "true"
+              -   Name: SYMFONY_UPDATE_DIRECTORY_PERMISSIONS
+                  Value: "true"
             Cpu: 0
             Image: !Ref TaskDefinitionImageParameter
             Essential: true
