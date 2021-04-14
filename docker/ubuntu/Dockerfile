@@ -1,4 +1,4 @@
-FROM ubuntu:21.04
+FROM ubuntu:20.04
 
 # Set the timezone right at the beginning so that the ntp installation can proceed
 ENV TZ=Etc/UTC

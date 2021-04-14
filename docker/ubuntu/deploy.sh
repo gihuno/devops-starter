@@ -1,5 +1,5 @@
 docker build -t gihuno/ubuntu .
 
-docker tag gihuno/ubuntu:21.04 gihuno/ubuntu:21.04
+docker tag gihuno/ubuntu:latest gihuno/ubuntu:20.04
 
-docker push gihuno/ubuntu:21.04
+docker push gihuno/ubuntu:20.04
