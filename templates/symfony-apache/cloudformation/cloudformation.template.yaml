@@ -356,14 +356,7 @@ Parameters:
     Type: String
   Route53HostedZoneId:
     Type: String
-  S3DeploymentKeyParameter:
-    Type: String
   UniqueShortEnvKeynameParameter:
-    Type: String
-
-  ContentfulMainEnvironmentIdParameter:
-    Type: String
-  ContentfulPreviewEnvironmentIdParameter:
     Type: String
 
   TaskDefinitionImageParameter:
