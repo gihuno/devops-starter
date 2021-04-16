@@ -72,20 +72,13 @@ Resources:
                   ContainerPort: 80
             Environment:
               -   Name: APP_ENV
-                  Value: !If [IsProduction, 'prod', 'dev']
+                  Value: 'prod'
               -   Name: APP_DEBUG
-                  Value: !If [IsProduction, 0, 1]
+                  Value: 1
               -   Name: VIRTUALHOST_CONFIG_FILE
-                  Value: !Join
-                    - ''
-                    - - '/etc/apache2/sites-available/'
-                      - !Ref DomainWithDashesParameter
-                      - '.conf'
+                  Value: !Ref VirtualHostConfigurationFileParameter
               -   Name: VIRTUALHOST_DIRECTORY_PATH
-                  Value: !Join
-                    - ''
-                    - - '/var/www/'
-                      - !Ref DomainWithDashesParameter
+                  Value: !Ref VirtualHostDirectoryPathParameter
               -   Name: SYMFONY_CLEAR_CACHE_ON_STARTUP
                   Value: "true"
               -   Name: SYMFONY_UPDATE_DIRECTORY_PERMISSIONS
@@ -97,15 +90,15 @@ Resources:
       ExecutionRoleArn: !Join
         - ''
         - - 'arn:aws:iam::'
-          - !Ref 'AWS::AccountId'
+          - !Ref TaskDefinitionAccountIdParameter
           - ':role/'
-          - 'ECSMicroserviceRole'
+          - 'ECSTaskRole'
       TaskRoleArn: !Join
         - ''
         - - 'arn:aws:iam::'
           - !Ref 'AWS::AccountId'
           - ':role/'
-          - 'ECSMicroserviceRole'
+          - 'ECSTaskRole'
       Cpu: !Ref TaskCpuParameter
       Memory: !Ref TaskMemoryParameter
       NetworkMode: awsvpc
@@ -136,7 +129,7 @@ Resources:
     Type: 'AWS::ElasticLoadBalancingV2::Listener'
     Properties:
       Certificates:
-        - CertificateArn: !Ref CertificateArnParameter
+        - CertificateArn: !Ref HttpsListenerCertificateArnParameter
       DefaultActions:
         - Type: forward
           TargetGroupArn: !Ref TargetGroup
@@ -234,7 +227,7 @@ Resources:
             DomainName: !GetAtt LoadBalancer.DNSName
             Id: "LoadBalancer"
         ViewerCertificate:
-          AcmCertificateArn: !Ref CertificateArnParameter
+          AcmCertificateArn: !Ref CloudFrontCertificateArnParameter
           SslSupportMethod: sni-only
     DependsOn:
       - Service
@@ -346,11 +339,13 @@ Resources:
       EnableDnsHostnames: true
 
 Parameters:
-  CertificateArnParameter:
+  CloudFrontCertificateArnParameter:
     Type: String
   DomainWithDashesParameter:
     Type: String
   EnvironmentNameParameter:
+    Type: String
+  HttpsListenerCertificateArnParameter:
     Type: String
   Route53DNSRecordNameParameter:
     Type: String
@@ -361,12 +356,18 @@ Parameters:
 
   TaskDefinitionImageParameter:
     Type: String
+  TaskDefinitionAccountIdParameter:
+    Type: String
   TaskCpuParameter:
     Type: String
     Default: '256'
   TaskMemoryParameter:
     Type: String
     Default: '512'
+  VirtualHostConfigurationFileParameter:
+    Type: String
+  VirtualHostDirectoryPathParameter:
+    Type: String
 
 Conditions:
   IsProduction: !Equals [!Ref EnvironmentNameParameter, prod]

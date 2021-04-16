@@ -3,7 +3,8 @@ FROM gihuno/php:8.0
 # Install Python
 RUN  apt-get -y update && apt-get install -y -q \
 python3 \
-python3-pip
+python3-pip \
+unzip
 
 #Install AWS-CLI
 RUN pip3 install --upgrade pip

@@ -1,0 +1,117 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description:
+Resources:
+  DummyServer:
+    Type: "AWS::EC2::Instance"
+    Properties:
+      ImageId: ""
+
+  {
+    "Version": "2012-10-17",
+    "Statement": [
+      {
+        "Sid": "VisualEditor0",
+        "Effect": "Allow",
+        "Action": [
+            "cloudformation:ListExports",
+            "cloudformation:ListStackInstances",
+            "logs:*",
+            "cloudformation:DescribeStackResource",
+            "cloudformation:UpdateStackSet",
+            "cloudformation:CreateChangeSet",
+            "cloudformation:ListTypeRegistrations",
+            "cloudformation:ContinueUpdateRollback",
+            "cloudformation:ListStackSetOperationResults",
+            "cloudfront:*",
+            "cloudformation:DescribeStackEvents",
+            "cloudformation:UpdateStack",
+            "cloudformation:DescribeChangeSet",
+            "cloudformation:CreateStackSet",
+            "cloudformation:ExecuteChangeSet",
+            "events:*",
+            "ecr:BatchCheckLayerAvailability",
+            "cloudformation:ListStackResources",
+            "ecr:GetLifecyclePolicy",
+            "ecr:DescribeImageScanFindings",
+            "apigateway:*",
+            "cloudformation:DescribeStackInstance",
+            "ecr:GetDownloadUrlForLayer",
+            "ecr:PutImageScanningConfiguration",
+            "cloudformation:DescribeStackResources",
+            "cloudformation:SignalResource",
+            "ecr:GetAuthorizationToken",
+            "cloudformation:DescribeStacks",
+            "ecr:PutImage",
+            "cloudformation:DescribeStackResourceDrifts",
+            "cloudformation:GetStackPolicy",
+            "cloudformation:GetTemplate",
+            "ecr:BatchGetImage",
+            "ecr:DescribeImages",
+            "ecs:*",
+            "ec2:*",
+            "ecr:StartLifecyclePolicyPreview",
+            "cloudformation:UntagResource",
+            "ecr:InitiateLayerUpload",
+            "cloudformation:ValidateTemplate",
+            "cloudformation:ListTypeVersions",
+            "cloudformation:RegisterType",
+            "cloudformation:CreateUploadBucket",
+            "cloudformation:DetectStackSetDrift",
+            "cloudformation:DescribeStackDriftDetectionStatus",
+            "ecr:PutImageTagMutability",
+            "cloudformation:DetectStackDrift",
+            "cloudformation:CancelUpdateStack",
+            "cloudformation:SetTypeDefaultVersion",
+            "cloudformation:UpdateStackInstances",
+            "cloudformation:ListStackSetOperations",
+            "ecr:StartImageScan",
+            "cloudformation:ListTypes",
+            "ecr:UploadLayerPart",
+            "sqs:*",
+            "ecr:PutRegistryPolicy",
+            "cloudformation:CreateStackInstances",
+            "cloudformation:DeregisterType",
+            "cloudformation:EstimateTemplateCost",
+            "cloudformation:DetectStackResourceDrift",
+            "cloudformation:DescribeStackSetOperation",
+            "ecr:CompleteLayerUpload",
+            "cloudformation:DescribeAccountLimits",
+            "cloudformation:StopStackSetOperation",
+            "ecr:ReplicateImage",
+            "ecr:GetRegistryPolicy",
+            "ecr:PutLifecyclePolicy",
+            "cloudformation:ListStacks",
+            "cloudformation:DescribeType",
+            "cloudformation:ListImports",
+            "ecr:GetLifecyclePolicyPreview",
+            "ecr:DescribeRegistry",
+            "elasticloadbalancing:*",
+            "cloudformation:DescribeTypeRegistration",
+            "cloudformation:GetTemplateSummary",
+            "cloudformation:DescribeStackSet",
+            "cloudformation:ListStackSets",
+            "cloudformation:CreateStack",
+            "route53:*",
+            "cloudformation:TagResource",
+            "elasticache:*",
+            "cloudformation:ListChangeSets",
+            "ecr:PutReplicationConfiguration",
+            "ecr:GetRepositoryPolicy"
+        ],
+        "Resource": "*"
+      },
+      {
+        "Sid": "VisualEditor1",
+        "Effect": "Allow",
+        "Action": [
+            "s3:Get*",
+            "s3:List*",
+            "s3:Put*"
+        ],
+        "Resource": [
+            "arn:aws:s3:::optitax-artifactory",
+            "arn:aws:s3:::optitax-artifactory/*"
+        ]
+      }
+    ]
+  }
