@@ -109,8 +109,8 @@ Resources:
             "s3:Put*"
         ],
         "Resource": [
-            "arn:aws:s3:::optitax-artifactory",
-            "arn:aws:s3:::optitax-artifactory/*"
+            "arn:aws:s3:::demo-artifactory",
+            "arn:aws:s3:::demo-artifactory/*"
         ]
       }
     ]
