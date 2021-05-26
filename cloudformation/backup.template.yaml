@@ -1,0 +1,78 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "This stack has all for backups."
+Resources:
+  KMSKey:
+    Type: AWS::KMS::Key
+    Properties:
+      Description: "Encryption key for daily"
+      EnableKeyRotation: True
+      Enabled: True
+      KeyPolicy:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              "AWS": !Join
+                - ''
+                - - 'arn:'
+                  - !Ref 'AWS::Partition'
+                  - ':iam::'
+                  - !Ref 'AWS::AccountId'
+                  - ':root'
+            Action:
+              - kms:*
+            Resource: "*"
+
+  BackupVaultWithDailyBackups:
+    Type: "AWS::Backup::BackupVault"
+    Properties:
+      BackupVaultName: !Ref BackupVaultName
+      EncryptionKeyArn: !GetAtt KMSKey.Arn
+
+  BackupPlanWithDailyBackups:
+    Type: "AWS::Backup::BackupPlan"
+    Properties:
+      BackupPlan:
+        BackupPlanName: !Ref BackupPlanWithDailyBackupsName
+        BackupPlanRule:
+          -
+            RuleName: "RuleForDailyBackups"
+            TargetBackupVault: !Ref BackupVaultWithDailyBackups
+            ScheduleExpression: "cron(0 5 ? * * *)"
+    DependsOn: BackupVaultWithDailyBackups
+
+  BackupRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service:
+                - "backup.amazonaws.com"
+            Action:
+              - "sts:AssumeRole"
+      ManagedPolicyArns:
+        - "arn:aws:iam::aws:policy/service-role/TagBasedBackupSelectionName"
+
+  TagBasedBackupSelection:
+    Type: "AWS::Backup::BackupSelection"
+    Properties:
+      BackupSelection:
+        SelectionName: !Ref TagBasedBackupSelectionName
+        IamRoleArn: !GetAtt BackupRole.Arn
+        ListOfTags:
+          - ConditionType: "STRINGEQUALS"
+            ConditionKey: "backup"
+            ConditionValue: "daily"
+      BackupPlanId: !Ref BackupPlanWithDailyBackups
+    DependsOn: BackupPlanWithDailyBackups
+
+Parameters:
+  BackupVaultName:
+    Type: String
+  BackupPlanWithDailyBackupsName:
+    Type: String
+  TagBasedBackupSelectionName:
+    Type: String

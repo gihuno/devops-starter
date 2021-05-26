@@ -1,0 +1,96 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "This stack has all for redis."
+Resources:
+  Redis:
+    Type: "AWS::ElastiCache::CacheCluster"
+    Properties:
+      Engine: redis
+      CacheNodeType: cache.t2.micro
+      AutoMinorVersionUpgrade: true
+      NumCacheNodes: "1"
+      VpcSecurityGroupIds:
+        - !Ref SecurityGroup
+      CacheSubnetGroupName: !Ref SubnetGroup
+
+  SecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      VpcId:
+        Fn::ImportValue:
+          !Sub "${NetworkingStack}:vpc:id"
+      GroupDescription: The redis security group
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: '6379'
+          ToPort: '6379'
+          CidrIp: 10.0.128.0/17
+
+  SubnetGroup:
+    Type: "AWS::ElastiCache::SubnetGroup"
+    Properties:
+      Description: The redis subnet group
+      SubnetIds:
+        - !Ref Subnet1
+        - !Ref Subnet2
+
+  Subnet1:
+    Type: "AWS::EC2::Subnet"
+    Properties:
+      VpcId:
+        Fn::ImportValue:
+          !Sub "${NetworkingStack}:vpc:id"
+      CidrBlock: !Ref Subnet1CidrBlock
+      AvailabilityZone: !Ref Subnet1RegionAZ
+
+  Subnet2:
+    Type: "AWS::EC2::Subnet"
+    Properties:
+      VpcId:
+        Fn::ImportValue:
+          !Sub "${NetworkingStack}:vpc:id"
+      CidrBlock: !Ref Subnet2CidrBlock
+      AvailabilityZone: !Ref Subnet2RegionAZ
+
+  Subnet1RouteTableAssociation:
+    Type: "AWS::EC2::SubnetRouteTableAssociation"
+    Properties:
+      RouteTableId: !Ref RouteTable
+      SubnetId: !Ref Subnet1
+
+  Subnet2RouteTableAssociation:
+    Type: "AWS::EC2::SubnetRouteTableAssociation"
+    Properties:
+      RouteTableId: !Ref RouteTable
+      SubnetId: !Ref Subnet2
+
+  RouteTable:
+    Type: "AWS::EC2::RouteTable"
+    Properties:
+      VpcId:
+        Fn::ImportValue:
+          !Sub "${NetworkingStack}:vpc:id"
+
+  InternetGatewayRoute:
+    Type: "AWS::EC2::Route"
+    Properties:
+      RouteTableId: !Ref RouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId:
+        Fn::ImportValue:
+          !Sub "${NetworkingStack}:internet-gateway:id"
+
+Parameters:
+  NetworkingStack:
+    Type: String
+  Subnet1CidrBlock:
+    Type: String
+    Default: 10.0.96.0/28
+  Subnet2CidrBlock:
+    Type: String
+    Default: 10.0.96.16/28
+  Subnet1RegionAZ:
+    Type: String
+    Default: us-east-2a
+  Subnet2RegionAZ:
+    Type: String
+    Default: us-east-2b

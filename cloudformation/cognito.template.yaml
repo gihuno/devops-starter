@@ -1,0 +1,174 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Cognito Stack
+
+Resources:
+  # Creates a role that allows Cognito to send SNS messages
+  #  SNSRole:
+  #    Type: "AWS::IAM::Role"
+  #    Properties:
+  #      AssumeRolePolicyDocument:
+  #        Version: "2012-10-17"
+  #        Statement:
+  #          - Effect: "Allow"
+  #            Principal:
+  #              Service:
+  #                - "cognito-idp.amazonaws.com"
+  #            Action:
+  #              - "sts:AssumeRole"
+  #      Policies:
+  #        - PolicyName: "CognitoSNSPolicy"
+  #          PolicyDocument:
+  #            Version: "2012-10-17"
+  #            Statement:
+  #              - Effect: "Allow"
+  #                Action: "sns:publish"
+  #                Resource: "*"
+
+  # Creates a user pool in cognito for your app to auth against
+  # This example requires MFA and validates the phone number to use as MFA
+  # Other fields can be added to the schema
+  UserPool:
+    Type: "AWS::Cognito::UserPool"
+    Properties:
+      UserPoolName: !Ref UserPoolName
+      AutoVerifiedAttributes:
+        - email
+      MfaConfiguration: "OFF"
+      #      SmsConfiguration:
+      #        ExternalId: !Sub ${AuthName}-external
+      #        SnsCallerArn: !GetAtt SNSRole.Arn
+      AliasAttributes:
+        - email
+        - preferred_username
+      #      Don't know the difference between alias and username attributes but can't define both
+      #      UsernameAttributes:
+      #        - email
+      UsernameConfiguration:
+        CaseSensitive: false
+      Schema:
+        - Name: firstName
+          AttributeDataType: String
+          Mutable: true
+        - Name: lastName
+          AttributeDataType: String
+          Mutable: true
+        - Name: email
+          AttributeDataType: String
+          Mutable: false
+          Required: true
+        - Name: phone_number
+          AttributeDataType: String
+          Mutable: false
+          Required: false
+
+  AdminPoolGroup:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties:
+      GroupName: ADMIN
+      Precedence: 0
+      UserPoolId: !Ref UserPool
+
+  UserPoolGroup:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties:
+      GroupName: USER
+      Precedence: 0
+      UserPoolId: !Ref UserPool
+
+    # Creates a User Pool Client to be used by the identity pool
+  UserPoolAppClient:
+    Type: "AWS::Cognito::UserPoolClient"
+    Properties:
+      ClientName: !Ref AppClientName
+      GenerateSecret: false
+      UserPoolId: !Ref UserPool
+      PreventUserExistenceErrors: ENABLED
+
+  UserPoolRestClient:
+    Type: "AWS::Cognito::UserPoolClient"
+    Properties:
+      SupportedIdentityProviders:
+        - COGNITO
+        - Google
+      ClientName: !Ref RestClientName
+      GenerateSecret: true
+      UserPoolId: !Ref UserPool
+      AllowedOAuthFlows:
+        - code
+        - implicit
+      #        - client_credentials
+      AllowedOAuthFlowsUserPoolClient: true
+      CallbackURLs:
+        - https://oauth.pstmn.io/v1/browser-callback
+      DefaultRedirectURI: https://oauth.pstmn.io/v1/browser-callback
+      ExplicitAuthFlows:
+        - ALLOW_ADMIN_USER_PASSWORD_AUTH
+        - ALLOW_CUSTOM_AUTH
+        - ALLOW_USER_PASSWORD_AUTH
+        - ALLOW_USER_SRP_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+      AllowedOAuthScopes:
+        - phone
+        - email
+        - openid
+        - profile
+        - aws.cognito.signin.user.admin
+    DependsOn:
+      - UserPoolGoogleIdentityProvider
+
+  UserPoolDomain:
+    Type: AWS::Cognito::UserPoolDomain
+    Properties:
+      UserPoolId: !Ref UserPool
+      CustomDomainConfig:
+        CertificateArn: !Ref CertificateArn
+      Domain: !Ref DomainName
+
+  UserPoolGoogleIdentityProvider:
+    Type: AWS::Cognito::UserPoolIdentityProvider
+    Properties:
+      UserPoolId: !Ref UserPool
+      ProviderName: "Google"
+      ProviderDetails:
+        client_id: "{{resolve:ssm:APP_GOOGLE_CLIENT_ID:2}}"
+        client_secret: "{{resolve:ssm:APP_GOOGLE_CLIENT_SECRET:1}}"
+        authorize_scopes: "profile email openid"
+      ProviderType: "Google"
+      AttributeMapping:
+        email: "email"
+    #        phone_number: "phone_number"
+    DependsOn:
+      - UserPool
+
+Parameters:
+  UserPoolName:
+    Type: String
+    Description: The user pool name
+  AppClientName:
+    Type: String
+    Description: The app client name
+  RestClientName:
+    Type: String
+    Description: The rest client name
+  CertificateArn:
+    Type: String
+  DomainName:
+    Type: String
+
+Outputs:
+  UserPoolId:
+    Value: !Ref UserPool
+    Export:
+      Name: !Sub "${AWS::StackName}:user-pool:id"
+  UserPoolArn:
+    Value: !GetAtt UserPool.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}:user-pool:arn"
+  UserPoolAppClientId:
+    Value: !Ref UserPoolAppClient
+    Export:
+      Name: !Sub "${AWS::StackName}:user-pool-app-client:id"
+  UserPoolRestClientId:
+    Value: !Ref UserPoolAppClient
+    Export:
+      Name: !Sub "${AWS::StackName}:user-pool-rest-client:id"
