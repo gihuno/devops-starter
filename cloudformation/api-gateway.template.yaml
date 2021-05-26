@@ -1,0 +1,175 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "This stack has all for api gateway."
+Resources:
+  RestApi:
+    Type: 'AWS::ApiGateway::RestApi'
+    Properties:
+      Name: !Join
+        - ''
+        - - !Ref EnvName
+          - '-api'
+
+  ApiGatewayDeployment:
+    Type: 'AWS::ApiGateway::Deployment'
+    Properties:
+      RestApiId: !Ref RestApi
+      Description: "The default deployment"
+    DependsOn:
+      - CognitoAuthorizer
+      - ApiRootResource
+      - ApiCatchAllResource
+      - OptionsApiMethod
+      - IndexMethod
+
+  ApiGatewayLogGroup:
+    Type: 'AWS::Logs::LogGroup'
+    Properties:
+      LogGroupName: !Join
+        - ""
+        - - "/aws/api-gateway/"
+          - !Ref EnvName
+      RetentionInDays: 7
+
+  ApiGatewayStage:
+    Type: 'AWS::ApiGateway::Stage'
+    Properties:
+      DeploymentId: !Ref ApiGatewayDeployment
+      RestApiId: !Ref RestApi
+      StageName: "Production"
+      AccessLogSetting:
+        DestinationArn: !GetAtt ApiGatewayLogGroup.Arn
+        Format: '{ "requestId":"$context.requestId", "ip": "$context.identity.sourceIp", "caller":"$context.identity.caller", "user":"$context.identity.user","requestTime":"$context.requestTime", "httpMethod":"$context.httpMethod","resourcePath":"$context.resourcePath", "status":"$context.status","protocol":"$context.protocol", "responseLength":"$context.responseLength", "integrationError": "$context.integration.error", "body": "$input.body", "integrationErrorMessage": "$context.integrationErrorMessage", "authorizerError": "$context.authorizer.error", "errorMessageString": "$context.error.messageString" }'
+      MethodSettings:
+        - MetricsEnabled: true
+          ResourcePath: "/*"
+          HttpMethod: "*"
+
+  ApiRootResource:
+    Type: 'AWS::ApiGateway::Resource'
+    Properties:
+      RestApiId: !Ref RestApi
+      ParentId: !GetAtt RestApi.RootResourceId
+      PathPart: api
+
+  ApiCatchAllResource:
+    Type: 'AWS::ApiGateway::Resource'
+    Properties:
+      RestApiId: !Ref RestApi
+      ParentId: !Ref ApiRootResource
+      PathPart: "{proxy+}"
+
+  OptionsApiMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      AuthorizationType: NONE
+      RestApiId: !Ref RestApi
+      ResourceId: !Ref ApiCatchAllResource
+      HttpMethod: OPTIONS
+      Integration:
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Headers: "'Accept,Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,Response-Format-Version'"
+              method.response.header.Access-Control-Allow-Methods: "'DELETE, GET, HEAD, OPTIONS, PATCH, POST, PUT'"
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+            ResponseTemplates:
+              application/json: '{}'
+        PassthroughBehavior: WHEN_NO_MATCH
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+        Type: MOCK
+      MethodResponses:
+        - StatusCode: 200
+          ResponseModels:
+            application/json: 'Empty'
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Headers: false
+            method.response.header.Access-Control-Allow-Methods: false
+            method.response.header.Access-Control-Allow-Origin: false
+
+  IndexMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      AuthorizationType: NONE
+      RestApiId: !Ref RestApi
+      ResourceId: !GetAtt RestApi.RootResourceId
+      HttpMethod: ANY
+      Integration:
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Headers: "'Accept,Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,Response-Format-Version'"
+              method.response.header.Access-Control-Allow-Methods: "'DELETE, GET, HEAD, OPTIONS, PATCH, POST, PUT'"
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+            ResponseTemplates:
+              application/json: '{}'
+        PassthroughBehavior: WHEN_NO_MATCH
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+        Type: MOCK
+      MethodResponses:
+        - StatusCode: 200
+          ResponseModels:
+            application/json: 'Empty'
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Headers: false
+            method.response.header.Access-Control-Allow-Methods: false
+            method.response.header.Access-Control-Allow-Origin: false
+
+  ErrorModelApiGateway:
+    Type: 'AWS::ApiGateway::Model'
+    Properties:
+      ContentType: application/json
+      Description: This is the default error schema model
+      Name: ErrorModel
+      Schema: >-
+        { "$schema" : "http://json-schema.org/draft-04/schema#", "title" :
+        "Error Schema", "type" : "object", "properties" : { "status": { "type" :
+        "string" }, "code": { "type" : "number" }, "message" : { "type" :
+        "string" }, "errors": { "type": "object", "properties": { "error": {
+        "type": "object", "properties": { "status": { "type" : "number"},
+        "locale": { "type": "string" }, "code": { "type" : "number"}, "title": {
+        "type": "string" }, "detail": { "type": "string" } } }, "children": {
+        "type": "array" } } } } }
+      RestApiId: !Ref RestApi
+
+  CognitoAuthorizer:
+    Type: AWS::ApiGateway::Authorizer
+    Properties:
+      IdentitySource: method.request.header.authorization
+      Name: CognitoAuthorizer
+      ProviderARNs:
+        - Fn::ImportValue:
+            !Sub "${CognitoStack}:user-pool:arn"
+      RestApiId: !Ref RestApi
+      Type: COGNITO_USER_POOLS
+# Add vpc link ? Methods ? Models? responses ?
+
+
+Parameters:
+  EnvName:
+    Type: String
+  CognitoStack:
+    Type: String
+
+Outputs:
+  RestApiId:
+    Description: The reference to the rest api
+    Value: !Ref RestApi
+    Export:
+      Name: !Sub "${AWS::StackName}:rest-api:id"
+  ApiGatewayStage:
+    Description: The reference to the api gateway stage
+    Value: !Ref ApiGatewayStage
+    Export:
+      Name: !Sub "${AWS::StackName}:api-gateway-stage:id"
+  ApiCatchAllResource:
+    Description: The reference to the api catch all resource
+    Value: !Ref ApiCatchAllResource
+    Export:
+      Name: !Sub "${AWS::StackName}:catch-all-resource:id"
+  CognitoAuthorizer:
+    Description: The reference to the cognito authorizer
+    Value: !Ref CognitoAuthorizer
+    Export:
+      Name: !Sub "${AWS::StackName}:cognito-authorizer:id"

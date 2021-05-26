@@ -1,0 +1,169 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "This stack has everything for the lambda function."
+Resources:
+  # <editor-fold desc="Triggers">
+  DemoSQSLambdaTrigger:
+    Type: 'AWS::Lambda::EventSourceMapping'
+    Properties:
+      EventSourceArn:
+        Fn::ImportValue:
+          !Sub "${SQSStack}:sqs-queue:arn"
+      FunctionName: !Ref DemoLambda
+
+  DemoFifoSQSLambdaTrigger:
+    Type: 'AWS::Lambda::EventSourceMapping'
+    Properties:
+      EventSourceArn:
+        Fn::ImportValue:
+          !Sub "${SQSStack}:fifo-sqs-queue:arn"
+      FunctionName: !Ref DemoLambda
+
+  ApiGatewayPermission:
+    Type: 'AWS::Lambda::Permission'
+    Properties:
+      FunctionName: !GetAtt DemoLambda.Arn
+      Action: 'lambda:InvokeFunction'
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Join
+        - ''
+        - - 'arn:aws:execute-api:'
+          - !Ref 'AWS::Region'
+          - ':'
+          - !Ref 'AWS::AccountId'
+          - ':'
+          - Fn::ImportValue:
+              !Sub "${ApiGatewayStack}:rest-api:id"
+          - '/*'
+  # </editor-fold>
+
+  # <editor-fold desc="Role">
+  DemoLambdaRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      RoleName: "DemoLambdaRole"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service:
+                - "lambda.amazonaws.com"
+            Action:
+              - "sts:AssumeRole"
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AWSLambdaExecute
+        - arn:aws:iam::aws:policy/AmazonS3FullAccess
+        - arn:aws:iam::aws:policy/AmazonDynamoDBFullAccess
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaSQSQueueExecutionRole
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaENIManagementAccess
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+  #      Policies:
+  #        - PolicyName: "LambdaPolicy"
+  #          PolicyDocument:
+  #            Version: "2012-10-17"
+  #            Statement:
+  #              - Effect: "Allow"
+  #                Action: "sns:publish"
+  #                Resource: "*"
+  # </editor-fold>
+
+  # <editor-fold desc="Lambda">
+  DemoLambda:
+    Type: 'AWS::Lambda::Function'
+    Properties:
+      Environment:
+        Variables:
+          IS_PROD: !If [IsProduction, true, false]
+          NODE_ENV: !If [IsProduction, 'prod', 'dev']
+          REGION: !Ref 'AWS::Region'
+          POOL_ID:
+            Fn::ImportValue:
+              !Sub "${CognitoStack}:user-pool:id"
+      Code:
+        S3Bucket: demo-artifactory
+        S3Key: !Ref DemoLambdaKey
+      Handler: lambda.handler
+      Timeout: 15
+      MemorySize: 256
+      TracingConfig:
+        Mode: Active
+      Role: !GetAtt DemoLambdaRole.Arn
+      Runtime: nodejs12.x
+      VpcConfig:
+        SecurityGroupIds:
+          - Fn::ImportValue:
+              !Sub "${NetworkingStack}:public-security-group:id"
+        SubnetIds:
+          - Fn::ImportValue:
+              !Sub "${NetworkingStack}:lambda-subnet-1:id"
+          - Fn::ImportValue:
+              !Sub "${NetworkingStack}:lambda-subnet-2:id"
+
+  DemoLambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${DemoLambda}"
+      RetentionInDays: !If [IsProduction, 14, 1]
+  # </editor-fold>
+
+  # <editor-fold desc="Api gateway">
+  CatchAllMethod:
+    Type: 'AWS::ApiGateway::Method'
+    Properties:
+      ResourceId:
+        Fn::ImportValue:
+          !Sub "${ApiGatewayStack}:catch-all-resource:id"
+      HttpMethod: ANY
+      RestApiId:
+        Fn::ImportValue:
+          !Sub "${ApiGatewayStack}:rest-api:id"
+      ApiKeyRequired: false
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId:
+        Fn::ImportValue:
+          !Sub "${ApiGatewayStack}:cognito-authorizer:id"
+      RequestParameters:
+        method.request.header.authorizationHeader: false
+      MethodResponses:
+        - StatusCode: 200
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Join
+          - ''
+          -   - 'arn:aws:apigateway:'
+              - !Ref 'AWS::Region'
+              - ':lambda:path/2015-03-31/functions/'
+              - !GetAtt DemoLambda.Arn
+              - '/invocations'
+  # </editor-fold>
+
+Parameters:
+  ApiGatewayStack:
+    Type: String
+  CognitoStack:
+    Type: String
+  IsProd:
+    Type: String
+    Default: "false"
+  NetworkingStack:
+    Type: String
+  DemoLambdaKey:
+    Type: String
+  SQSStack:
+    Type: String
+
+Conditions:
+  IsProduction: !Equals [!Ref IsProd, true]
+
+Outputs:
+  DemoLambdaArn:
+    Description: The arn of the demo lambda
+    Value: !GetAtt DemoLambda.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}:demo-lambda:arn"
+  DemoLambdaName:
+    Description: The name of demo lambda
+    Value: !Ref DemoLambda
+    Export:
+      Name: !Sub "${AWS::StackName}:demo-lambda:name"

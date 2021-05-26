@@ -1,0 +1,344 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "This stack has all for rds database."
+Resources:
+  # <editor-fold desc="Database networking">
+  SecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      VpcId:
+        Fn::ImportValue:
+          !Sub "${NetworkingStack}:vpc:id"
+      GroupDescription: The rds database security group
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: '3306'
+          ToPort: '3306'
+          CidrIp: 0.0.0.0/0
+      SecurityGroupEgress:
+        - IpProtocol: '-1'
+          FromPort: '-1'
+          ToPort: '-1'
+          CidrIp: 0.0.0.0/0
+
+  RouteTable:
+    Type: "AWS::EC2::RouteTable"
+    Properties:
+      VpcId:
+        Fn::ImportValue:
+          !Sub "${NetworkingStack}:vpc:id"
+
+  Subnet1:
+    Type: "AWS::EC2::Subnet"
+    Properties:
+      VpcId:
+        Fn::ImportValue:
+          !Sub "${NetworkingStack}:vpc:id"
+      CidrBlock: !Ref Subnet1CIDRBlock
+      AvailabilityZone: !Ref Subnet1RegionAZ
+
+  Subnet2:
+    Type: "AWS::EC2::Subnet"
+    Properties:
+      VpcId:
+        Fn::ImportValue:
+          !Sub "${NetworkingStack}:vpc:id"
+      CidrBlock: !Ref Subnet2CIDRBlock
+      AvailabilityZone: !Ref Subnet2RegionAZ
+
+  Subnet1RouteTableAssociation:
+    Type: "AWS::EC2::SubnetRouteTableAssociation"
+    Properties:
+      RouteTableId: !Ref RouteTable
+      SubnetId: !Ref Subnet1
+
+  Subnet2RouteTableAssociation:
+    Type: "AWS::EC2::SubnetRouteTableAssociation"
+    Properties:
+      RouteTableId: !Ref RouteTable
+      SubnetId: !Ref Subnet2
+
+  SubnetGroup:
+    Type: "AWS::RDS::DBSubnetGroup"
+    Properties:
+      DBSubnetGroupDescription: The rds database subnet group
+      SubnetIds:
+        - !Ref Subnet1
+        - !Ref Subnet2
+
+  InternetGatewayRoute:
+    Type: "AWS::EC2::Route"
+    Properties:
+      RouteTableId: !Ref RouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId:
+        Fn::ImportValue:
+          !Sub "${NetworkingStack}:internet-gateway:id"
+  # </editor-fold>
+
+  # <editor-fold desc="Database">
+  RDSDatabaseInstance:
+    Type: "AWS::RDS::DBInstance"
+    Properties:
+      AllocatedStorage: "20"
+      MaxAllocatedStorage: 250
+      BackupRetentionPeriod: !If
+        - IsProduction
+        - 7
+        - 0
+      Engine: MySQL
+      EngineVersion: 5.7.26
+      DeletionProtection: !If
+        - IsProduction
+        - true
+        - false
+      DBInstanceClass: !If
+        - IsEnvironmentSizeMax
+        - db.t3.large
+        - db.t3.micro
+      DBInstanceIdentifier: !Join
+        - ""
+        - - "rds-db-"
+          - !Ref EnvName
+      DBSnapshotIdentifier: !Ref DBSnapshotIdentifier
+      DBSubnetGroupName: !Ref SubnetGroup
+      MasterUsername: !Join ['', ['{{resolve:secretsmanager:', !Ref Secret, ':SecretString:username}}' ]]
+      MasterUserPassword: !Join ['', ['{{resolve:secretsmanager:', !Ref Secret, ':SecretString:password}}' ]]
+      PubliclyAccessible: !If
+        - IsProduction
+        - false
+        - true
+      VPCSecurityGroups:
+        - !Ref SecurityGroup
+      StorageType: gp2
+      MonitoringInterval: !If
+        - IsProduction
+        - 60
+        - 0
+      MonitoringRoleArn: !If
+        - IsProduction
+        - !Join
+          - ''
+          -   - 'arn:aws:iam::'
+              - !Ref 'AWS::AccountId'
+              - ':role/'
+              - 'RDSEnhancedMonitoringRole'
+        - !Ref AWS::NoValue
+      StorageEncrypted: true
+      KmsKeyId: !Ref EncryptionKey
+      MultiAZ: !If
+        - IsEnvironmentSizeMax
+        - true
+        - false
+  # </editor-fold>
+
+  # <editor-fold desc="Secrets and Encryption keys">
+  EncryptionKey:
+    Type: AWS::KMS::Key
+    Properties:
+      Description: Key used to encrypt the RDS Database
+      Enabled: true
+      EnableKeyRotation: true
+      KeyPolicy:
+        Version: 2012-10-17
+        Id: key-rds
+        Statement:
+          - Sid: Enable IAM User Permissions
+            Effect: Allow
+            Principal:
+              AWS: !Join
+                - ''
+                - - 'arn:aws:iam::'
+                  - !Ref 'AWS::AccountId'
+                  - ':root'
+            Action: 'kms:*'
+            Resource: '*'
+      KeySpec: SYMMETRIC_DEFAULT # RDS only support symmetric keys
+      PendingWindowInDays: 30
+
+  Secret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Description: Secret to access the RDS Database
+      GenerateSecretString:
+        SecretStringTemplate: '{"username": "demo"}'
+        GenerateStringKey: 'password'
+        PasswordLength: 16
+        ExcludeCharacters: '"@/\'
+      KmsKeyId: !Ref EncryptionKey
+      Name: !Join ['-', [!Ref 'AWS::StackName', secret]]
+  # </editor-fold>
+
+  # <editor-fold desc="Proxy">
+  RDSProxy:
+    Condition: ShouldCreateRDSProxy
+    Type: AWS::RDS::DBProxy
+    Properties:
+      DebugLogging: false
+      DBProxyName: !Join
+        - ''
+        - - 'RDS-proxy'
+          - !Ref EnvName
+      EngineFamily: MYSQL
+      IdleClientTimeout: 120
+      RequireTLS: true
+      RoleArn: !Join
+        - ''
+        - - 'arn:aws:iam::'
+          - !Ref 'AWS::AccountId'
+          - ':role/'
+          - 'RDSProxyDatabaseRole'
+      Auth:
+        - {AuthScheme: SECRETS, SecretArn: !Ref Secret, IAMAuth: DISABLED}
+      VpcSubnetIds:
+        - !Ref Subnet1
+        - !Ref Subnet2
+      VpcSecurityGroupIds:
+        - !Ref SecurityGroup
+
+  ProxyTargetGroup:
+    Condition: ShouldCreateRDSProxy
+    Type: AWS::RDS::DBProxyTargetGroup
+    Properties:
+      DBProxyName: !Ref RDSProxy
+      DBInstanceIdentifiers:
+        - !Ref RDSDatabaseInstance
+      TargetGroupName: default
+      ConnectionPoolConfigurationInfo:
+        MaxConnectionsPercent: 25
+        MaxIdleConnectionsPercent: 25
+        ConnectionBorrowTimeout: 120
+  # </editor-fold>
+
+  # <editor-fold desc="Roles">
+  # TODO: Create the proper policies
+  RDSEnhancedMonitoringRole:
+    Type: "AWS::IAM::Role"
+    Condition: IsProduction
+    Properties:
+      RoleName: "RDSEnhancedMonitoringRole"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service:
+                - "rds.amazonaws.com"
+            Action:
+              - "sts:AssumeRole"
+      ManagedPolicyArns:
+        - !Join
+          - ''
+          - - 'arn:aws:iam::'
+            - !Ref 'AWS::AccountId'
+            - ':role/'
+            - 'AWSLambdaBasicExecutionRole'
+  #      Policies:
+  #        - PolicyName: "LambdaPolicy"
+  #          PolicyDocument:
+  #            Version: "2012-10-17"
+  #            Statement:
+  #              - Effect: "Allow"
+  #                Action: "sns:publish"
+  #                Resource: "*"
+
+  # TODO: Create the proper policies
+  RDSProxyDatabaseRole:
+    Type: "AWS::IAM::Role"
+    Condition: ShouldCreateRDSProxy
+    Properties:
+      RoleName: "RDSProxyDatabaseRole"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service:
+                - "rds.amazonaws.com"
+            Action:
+              - "sts:AssumeRole"
+      ManagedPolicyArns:
+        - !Join
+          - ''
+          - - 'arn:aws:iam::'
+            - !Ref 'AWS::AccountId'
+            - ':role/'
+            - 'AWSLambdaBasicExecutionRole'
+  #      Policies:
+  #        - PolicyName: "LambdaPolicy"
+  #          PolicyDocument:
+  #            Version: "2012-10-17"
+  #            Statement:
+  #              - Effect: "Allow"
+  #                Action: "sns:publish"
+  #                Resource: "*"
+  # </editor-fold>
+
+
+Parameters:
+  DBSnapshotIdentifier:
+    Type: String
+    Default: ''
+  Subnet1CIDRBlock:
+    Type: String
+    Default: 10.0.80.0/28
+  Subnet2CIDRBlock:
+    Type: String
+    Default: 10.0.80.16/28
+  Subnet1RegionAZ:
+    Type: String
+    Default: us-east-2a
+  Subnet2RegionAZ:
+    Type: String
+    Default: us-east-2b
+  IsProd:
+    Type: String
+  NetworkingStack:
+    Type: String
+  EnvironmentSize:
+    Type: String
+    AllowedValues: ["min", "max"]
+    Default: "min"
+  ShouldCreateRDSProxy:
+    Type: String
+    AllowedValues: ["true", "false"]
+  EnvName:
+    Type: String
+
+Conditions:
+  ShouldCreateRDSProxy: !Equals [!Ref ShouldCreateRDSProxy, true]
+  IsEnvironmentSizeMax: !Equals [ !Ref EnvironmentSize, max ]
+  IsProduction: !Equals [!Ref IsProd, true]
+
+Outputs:
+  RDSProxyEndpoint:
+    Description: The endpoint of the proxy
+    Condition: ShouldCreateRDSProxy
+    Value: !GetAtt RDSProxy.Endpoint
+    Export:
+      Name: !Sub "${AWS::StackName}:rds-proxy:endpoint"
+
+  RDSProxyArn:
+    Description: The arn of the proxy
+    Condition: ShouldCreateRDSProxy
+    Value: !GetAtt RDSProxy.DBProxyArn
+    Export:
+      Name: !Sub "${AWS::StackName}:rds-proxy:arn"
+
+  RDSProxyName:
+    Description: The endpoint of the proxy
+    Condition: ShouldCreateRDSProxy
+    Value: !Ref RDSProxy
+    Export:
+      Name: !Sub "${AWS::StackName}:rds-proxy:name"
+
+  RDSDatabaseInstanceAddress:
+    Description: The address of the rds database
+    Value: !GetAtt RDSDatabaseInstance.Endpoint.Address
+    Export:
+      Name: !Sub "${AWS::StackName}:rds-database-instance:address"
+
+  RDSDatabaseInstancePort:
+    Description: The port of the main database
+    Value: !GetAtt RDSDatabaseInstance.Endpoint.Port
+    Export:
+      Name: !Sub "${AWS::StackName}:rds-database-instance:port"

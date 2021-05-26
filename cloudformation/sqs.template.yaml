@@ -1,0 +1,92 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "This stack has all for sqs."
+Resources:
+  DemoFifoSQSQueue:
+    Type: 'AWS::SQS::Queue'
+    Properties:
+      FifoQueue: true
+      ContentBasedDeduplication: true
+      VisibilityTimeout: 60
+      QueueName: !Join
+        - ''
+        - - !Ref EnvName
+          - '-sqs-demo.fifo'
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt DeadLetterFifoSQSQueue.Arn
+        maxReceiveCount: 1
+
+  DemoSQSQueue:
+    Type: 'AWS::SQS::Queue'
+    Properties:
+      VisibilityTimeout: 60
+      QueueName: !Join
+        - ''
+        - - !Ref EnvName
+          - '-sqs-demo'
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt DeadLetterSQSQueue.Arn
+        maxReceiveCount: 1
+
+  DeadLetterFifoSQSQueue:
+    Type: 'AWS::SQS::Queue'
+    Properties:
+      FifoQueue: true
+      ContentBasedDeduplication: true
+      QueueName: !Join
+        - ''
+        - - !Ref EnvName
+          - '-sqs-dead-letter.fifo'
+
+  DeadLetterSQSQueue:
+    Type: 'AWS::SQS::Queue'
+    Properties:
+      QueueName: !Join
+        - ''
+        - - !Ref EnvName
+          - '-sqs-dead-letter'
+
+Parameters:
+  EnvName:
+    Type: String
+
+Outputs:
+  DemoFifoSQSQueue:
+    Description: The reference to the fifo SQS Queue
+    Value: !Ref DemoFifoSQSQueue
+    Export:
+      Name: !Sub "${AWS::StackName}:fifo-sqs-queue:url"
+  DemoFifoSQSQueueArn:
+    Description: The arn of the fifo SQS Queue
+    Value: !GetAtt DemoFifoSQSQueue.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}:fifo-sqs-queue:arn"
+  DemoSQSQueue:
+    Description: The reference to the SQS Queue
+    Value: !Ref DemoSQSQueue
+    Export:
+      Name: !Sub "${AWS::StackName}:sqs-queue:url"
+  DemoSQSQueueArn:
+    Description: The Arn of the SQS Queue
+    Value: !GetAtt DemoSQSQueue.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}:sqs-queue:arn"
+  DeadLetterFifoSQSQueue:
+    Description: The reference to the fifo Dead Letter SQS Queue
+    Value: !Ref DeadLetterFifoSQSQueue
+    Export:
+      Name: !Sub "${AWS::StackName}:dead-letter-fifo-sqs-queue:url"
+  DeadLetterFifoSQSQueueArn:
+    Description: The arn of the fifo Dead Letter SQS Queue
+    Value: !GetAtt DeadLetterFifoSQSQueue.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}:dead-letter-fifo-sqs-queue:arn"
+  DeadLetterSQSQueue:
+    Description: The reference to the Dead Letter SQS Queue
+    Value: !Ref DeadLetterSQSQueue
+    Export:
+      Name: !Sub "${AWS::StackName}:dead-letter-sqs-queue:url"
+  DeadLetterSQSQueueArn:
+    Description: The arn of the Dead Letter SQS Queue
+    Value: !GetAtt DeadLetterSQSQueue.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}:dead-letter-sqs-queue:arn"

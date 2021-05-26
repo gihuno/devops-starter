@@ -1,0 +1,48 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "This stack has all for events."
+Resources:
+  EventBus:
+    Type: AWS::Events::EventBus
+    Properties:
+      Name: !Ref EventBusName
+
+  ExampleEventRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Description: "ExampleEventRule"
+      Name: "ExampleEventRuleName"
+      EventBusName: !Ref EventBus
+      EventPattern:
+        source:
+          - "example.created"
+      State: "DISABLED"
+      Targets:
+        -   Arn:
+              Fn::ImportValue:
+                !Sub "${LambdaStack}:demo-lambda:arn"
+            Id:
+              Fn::ImportValue:
+                !Sub "${LambdaStack}:demo-lambda:name"
+
+  PermissionForExampleEventRuleToInvokeDemoLambda:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName:
+        Fn::ImportValue:
+          !Sub "${ExampleEventRule}:demo-lambda:name"
+      Action: "lambda:InvokeFunction"
+      Principal: "events.amazonaws.com"
+      SourceArn: !GetAtt ExampleEventRule.Arn
+
+Parameters:
+  EventBusName:
+    Type: String
+  LambdaStack:
+    Type: String
+
+Outputs:
+  EventBus:
+    Description: The name of the event bus
+    Value: !Ref EventBus
+    Export:
+      Name: !Sub "${AWS::StackName}:event-bus:name"

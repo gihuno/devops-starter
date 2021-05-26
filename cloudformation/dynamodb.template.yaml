@@ -1,0 +1,65 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "This stack contains all the dynamodb tables."
+Resources:
+  DynamoDBEndpoint:
+    Type: "AWS::EC2::VPCEndpoint"
+    Properties:
+      RouteTableIds:
+        - Fn::ImportValue:
+            !Sub "${NetworkingStack}:lambda-route-table:id"
+      ServiceName:
+        !Sub "com.amazonaws.${AWS::Region}.dynamodb"
+      VpcId:
+        Fn::ImportValue:
+          !Sub "${NetworkingStack}:vpc:id"
+
+  DemoDynamoDBTable:
+    Type: 'AWS::DynamoDB::Table'
+    Properties:
+      TableName: !Ref DemoTableName
+      BillingMode: !If [ IsEnvironmentSizeMax, PAY_PER_REQUEST, PROVISIONED]
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+        - AttributeName: secondaryIndex
+          AttributeType: S
+      KeySchema:
+        - AttributeName: secondaryIndex
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: "secondaryIndex"
+          KeySchema:
+            - AttributeName: name
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+          ProvisionedThroughput:
+            ReadCapacityUnits: !If [ IsEnvironmentSizeMax, 0, 1]
+            WriteCapacityUnits: !If [ IsEnvironmentSizeMax, 0, 1]
+      ProvisionedThroughput:
+        ReadCapacityUnits: !If [ IsEnvironmentSizeMax, 0, 1]
+        WriteCapacityUnits: !If [ IsEnvironmentSizeMax, 0, 1]
+      Tags:
+        - Key: "backup"
+          Value: "daily"
+
+Parameters:
+  NetworkingStack:
+    Type: String
+  DemoTableName:
+    Type: String
+    Default: 'organization'
+  EnvironmentSize:
+    Type: String
+    AllowedValues: ["min", "max"]
+    Default: "min"
+
+Conditions:
+  IsEnvironmentSizeMax: !Equals [ !Ref EnvironmentSize, max ]
+
+Outputs:
+  DynamoDBEndpoint:
+    Description: The id of the dynamodb endpoint
+    Value: !Ref DynamoDBEndpoint
+    Export:
+      Name: !Sub "${AWS::StackName}:dynamodb-endpoint:id"
