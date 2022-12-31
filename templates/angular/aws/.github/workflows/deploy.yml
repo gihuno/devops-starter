@@ -1,0 +1,119 @@
+name: Deploy Angular App
+on:
+  workflow_call:
+    inputs:
+      acm-certificate-arn:
+        required: true
+        type: string
+      angular-release-build-folder-name:
+        type: string
+        default: dist
+      aws-region:
+        required: true
+        type: string
+      cloudfront-distribution:
+        required: true
+        type: string
+      cloudfront-folder-name:
+        required: true
+        type: string
+      environment-name:
+        required: true
+        type: string
+      route53-dns-record-name:
+        required: true
+        type: string
+      route53-hosted-zone-id:
+        required: true
+        type: string
+      s3-bucket-name:
+        required: true
+        type: string
+    secrets:
+      aws-access-key-id:
+        required: true
+      aws-secret-access-key:
+        required: true
+
+jobs:
+  deploy-frontend-app-stack:
+    name: Deploy the App
+    runs-on: ubuntu-latest
+
+    env:
+      working-directory: ./
+
+    steps:
+      # Setup
+      - uses: actions/checkout@v3
+
+      - name: Use Node.js 16.x
+        uses: actions/setup-node@v3
+        with:
+          node-version: 16.x
+          cache: 'npm'
+          registry-url: https://npm.pkg.github.com/
+
+      - run: npm install -g npm@8.19.2
+
+      # Install common dependencies
+      - run: npm ci
+
+      # Build the application in production
+      - run: npm run build:prod
+        if: inputs.IsProd == true
+        working-directory: ${{env.working-directory}}
+
+      #=========================
+      #
+      # Deployment starts here
+      #
+      #=========================
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1-node16
+        with:
+          aws-access-key-id: ${{ secrets.aws-access-key-id }}
+          aws-secret-access-key: ${{ secrets.aws-secret-access-key }}
+          aws-region: ${{ inputs.aws-region }}
+
+      # Deploy updates to AWS Cloudforamtion
+      - name: Deploy to AWS CloudFormation
+        uses: aws-actions/aws-cloudformation-github-deploy@v1
+        with:
+          name: frontend-app
+          template: ${{ github.workspace }}/infrastructure/cloudformation.template.yaml
+          no-fail-on-empty-changeset: "1"
+          parameter-overrides: >-
+            CertificateArnParameter=${{ inputs.acm-certificate-arn }},
+            DNSRecordNameParameter=${{ inputs.route53-dns-record-name }},
+            S3BucketNameParameter=${{ inputs.s3-bucket-name }},
+            BuildNumberParameter=${{ github.run_number }},
+            FolderParameter=${{ inputs.cloudfront-folder-name }},
+            Route53HostedZoneId=${{ inputs.route53-hosted-zone-id }}
+
+      # Deploy the dist folder to the S3 Bucket
+      - uses: jakejarvis/s3-sync-action@master
+        name: Deploy the dist folder to the S3 Bucket
+        env:
+          AWS_S3_BUCKET: ${{ inputs.s3-bucket-name }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.aws-access-key-id }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.aws-secret-access-key }}
+          AWS_REGION: ${{ inputs.aws-region }}
+          SOURCE_DIR: ${{ inputs.angular-release-build-folder-name }}
+          DEST_DIR: 'deployments/${{ github.run_number }}/${{ inputs.cloudfront-folder-name }}'
+
+      - name: Invalidate the CloudFront distribution.
+        uses: chetan/invalidate-cloudfront-action@master
+        env:
+          DISTRIBUTION: ${{ inputs.cloudfront-distribution }}
+          PATHS: '/*'
+          AWS_REGION: ${{ inputs.aws-region }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.aws-access-key-id }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.aws-secret-access-key }}
+
+      - name: Archive npm failure logs
+        uses: actions/upload-artifact@v3
+        if: failure()
+        with:
+          name: npm-logs
+          path: ~/.npm/_logs
